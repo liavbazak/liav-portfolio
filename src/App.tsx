@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, useScroll, useSpring, AnimatePresence, useMotionValue } from "motion/react";
 import { ArrowRight, Sparkles, ExternalLink, Github, Code2, Layout, Smartphone, X, Linkedin, Instagram, Menu, Loader2, Plus } from "lucide-react";
+import heroImage from "./hero-mobile.png";
 
 const navItems = [
   { name: "Home", href: "#home" },
@@ -439,29 +440,31 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Hero Section */}
       <section 
         id="home" 
-        className="relative flex flex-col justify-start md:justify-end min-h-screen px-6 pt-32 pb-24 md:pt-0 md:px-12 md:pb-32 bg-none md:bg-cover md:bg-right md:bg-no-repeat scroll-mt-32"
+        className="relative flex flex-col justify-start md:justify-end h-[60vh] md:min-h-screen px-6 pt-32 pb-0 md:pt-0 md:px-12 md:pb-32 bg-none md:bg-cover md:bg-right md:bg-no-repeat scroll-mt-32"
         style={{ 
-          backgroundImage: `url('https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_3BILPolG518VwI2qZQd8dqrQVxZ%2Fhf_20260322_093257_03b40438-b2ca-4350-b456-b623f28feea1.png&w=1280&q=85')` 
+          backgroundImage: `url(${heroImage})` 
         }}
       >
-        {/* Mobile Image */}
-        <div className="md:hidden absolute top-0 left-0 w-full h-[50vh] overflow-hidden">
+        <div className="md:hidden absolute top-0 left-0 w-full h-full overflow-hidden bg-black">
           <img 
-            src="https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_3BILPolG518VwI2qZQd8dqrQVxZ%2Fhf_20260322_093257_03b40438-b2ca-4350-b456-b623f28feea1.png&w=1280&q=85" 
+            src={heroImage} 
             alt="Hero" 
-            className="w-full h-full object-cover object-center"
+            className="w-full h-full object-cover object-right scale-[0.8] translate-x-[35%] origin-bottom bg-black lg:scale-100"
+            style={{
+              maskImage: 'linear-gradient(to right, transparent 0%, black 40%)',
+              WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 40%)'
+            }}
             referrerPolicy="no-referrer"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"></div>
+          <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-transparent to-black/20"></div>
         </div>
 
         {/* Dark overlay for readability (Desktop) */}
         <div className="hidden md:block absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/20"></div>
         
-        <div className="max-w-7xl mx-auto w-full grid grid-cols-1 md:grid-cols-12 gap-8 items-end relative z-10 mt-[45vh] md:mt-0">
+        <div className="max-w-7xl mx-auto w-full grid grid-cols-1 md:grid-cols-12 gap-8 items-end relative z-10 mt-0 md:mt-0">
           <div className="md:col-span-8">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
