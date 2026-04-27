@@ -516,7 +516,7 @@ export default function App() {
       {/* Projects Section */}
       <section id="projects" className="py-32 px-6 md:px-12 bg-[#050505] scroll-mt-32">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-8">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-8">
             <div>
               <span className="text-xs font-mono uppercase tracking-widest text-white/40 block mb-4">02 / Selected Works</span>
               <h2 className="text-5xl md:text-7xl font-bold tracking-tighter">Projects</h2>
