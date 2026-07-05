@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, useScroll, useSpring, AnimatePresence, useMotionValue } from "motion/react";
 import { ArrowRight, Sparkles, ExternalLink, Github, Code2, Layout, Smartphone, X, Linkedin, Instagram, Menu, Loader2, Plus } from "lucide-react";
 import heroImage from "./hero-mobile.png";
@@ -29,18 +29,18 @@ interface Project {
   github: string;
 }
 
-const LazyImage = ({ 
-  src, 
-  alt, 
-  className, 
+const LazyImage = ({
+  src,
+  alt,
+  className,
   imageClassName,
-  objectFit = "object-contain" 
-}: { 
-  src: string; 
-  alt: string; 
+  objectFit = "object-contain"
+}: {
+  src: string;
+  alt: string;
   className?: string;
   imageClassName?: string;
-  objectFit?: "object-contain" | "object-cover" 
+  objectFit?: "object-contain" | "object-cover"
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -51,7 +51,7 @@ const LazyImage = ({
         src={hasError ? `https://picsum.photos/seed/${alt}/800/600` : src}
         alt={alt}
         initial={{ opacity: 0, filter: "blur(10px)" }}
-        animate={{ 
+        animate={{
           opacity: isLoaded ? 1 : 0,
           filter: isLoaded ? "blur(0px)" : "blur(10px)"
         }}
@@ -232,7 +232,7 @@ const MouseFollower = () => {
     >
       {/* Core dot */}
       <div className="absolute inset-0 m-auto w-2 h-2 bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.8)]" />
-      
+
       {/* Outer glow layers */}
       <div className="absolute inset-0 w-full h-full bg-white/30 rounded-full blur-[4px]" />
       <div className="absolute inset-0 w-full h-full bg-white/10 rounded-full blur-[12px] scale-150" />
@@ -240,6 +240,225 @@ const MouseFollower = () => {
     </motion.div>
   );
 };
+
+function InteractiveMarquee() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const firstSetRef = useRef<HTMLDivElement>(null);
+  
+  const [itemWidth, setItemWidth] = useState(0);
+  
+  // Physics & Animation refs
+  const x = useRef(0);
+  const baseSpeed = useRef(-120); // pixels per second (negative scrolls right-to-left)
+  const currentSpeed = useRef(-120);
+  const isDragging = useRef(false);
+  const pointerId = useRef<number | null>(null);
+  
+  // Dragging state
+  const dragStartX = useRef(0);
+  const dragStartPos = useRef(0);
+  const lastPointerX = useRef(0);
+  const lastPointerTime = useRef(0);
+  const dragVelocity = useRef(0);
+  
+  const requestRef = useRef<number | null>(null);
+  const previousTimeRef = useRef<number | null>(null);
+
+  // Measure single content set width
+  useEffect(() => {
+    const measure = () => {
+      if (firstSetRef.current) {
+        setItemWidth(firstSetRef.current.offsetWidth);
+      }
+    };
+    
+    measure();
+    // Wait for fonts to load
+    window.addEventListener("load", measure);
+    
+    const resizeObserver = new ResizeObserver(() => measure());
+    if (firstSetRef.current) {
+      resizeObserver.observe(firstSetRef.current);
+    }
+    
+    return () => {
+      window.removeEventListener("load", measure);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  // Animation Loop
+  useEffect(() => {
+    const tick = (time: number) => {
+      if (previousTimeRef.current !== null) {
+        const dt = (time - previousTimeRef.current) / 1000; // in seconds
+        
+        if (!isDragging.current) {
+          // Physics: Interpolate speed toward baseSpeed (exponential decay of fling velocity)
+          const targetSpeed = baseSpeed.current;
+          const decayRate = 2.0; // premium inertia decay rate
+          currentSpeed.current = targetSpeed + (currentSpeed.current - targetSpeed) * Math.exp(-decayRate * dt);
+          
+          // Update translation offset
+          x.current += currentSpeed.current * dt;
+        }
+        
+        // Wrapping logic (wrap to ensure it loops seamlessly)
+        if (itemWidth > 0) {
+          if (x.current <= -itemWidth) {
+            x.current += itemWidth;
+          } else if (x.current >= 0) {
+            x.current -= itemWidth;
+          }
+        }
+        
+        // Apply transform
+        if (trackRef.current) {
+          trackRef.current.style.transform = `translate3d(${x.current}px, 0, 0)`;
+        }
+      }
+      
+      previousTimeRef.current = time;
+      requestRef.current = requestAnimationFrame(tick);
+    };
+    
+    requestRef.current = requestAnimationFrame(tick);
+    
+    return () => {
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current);
+      }
+    };
+  }, [itemWidth]);
+
+  // Pointer gesture handlers
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    
+    isDragging.current = true;
+    pointerId.current = e.pointerId;
+    dragStartX.current = e.clientX;
+    dragStartPos.current = x.current;
+    lastPointerX.current = e.clientX;
+    lastPointerTime.current = performance.now();
+    dragVelocity.current = 0;
+    
+    e.currentTarget.setPointerCapture(e.pointerId);
+    
+    if (containerRef.current) {
+      containerRef.current.style.cursor = "grabbing";
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging.current || pointerId.current !== e.pointerId) return;
+    
+    const now = performance.now();
+    const dt = now - lastPointerTime.current; // ms
+    const pointerX = e.clientX;
+    const deltaX = pointerX - lastPointerX.current;
+    
+    // Position updates instantly relative to start pointer
+    x.current = dragStartPos.current + (pointerX - dragStartX.current);
+    
+    // Filter velocity (instant v = dx / dt in seconds)
+    if (dt > 0) {
+      const instantV = deltaX / (dt / 1000);
+      dragVelocity.current = dragVelocity.current * 0.6 + instantV * 0.4;
+    }
+    
+    lastPointerX.current = pointerX;
+    lastPointerTime.current = now;
+    
+    // Wrap while dragging to avoid breaking boundaries on long drags
+    if (itemWidth > 0) {
+      if (x.current <= -itemWidth) {
+        x.current += itemWidth;
+        dragStartPos.current += itemWidth;
+      } else if (x.current >= 0) {
+        x.current -= itemWidth;
+        dragStartPos.current -= itemWidth;
+      }
+    }
+    
+    if (trackRef.current) {
+      trackRef.current.style.transform = `translate3d(${x.current}px, 0, 0)`;
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging.current || pointerId.current !== e.pointerId) return;
+    
+    isDragging.current = false;
+    pointerId.current = null;
+    
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+    
+    if (containerRef.current) {
+      containerRef.current.style.cursor = "grab";
+    }
+    
+    // Set current speed to user's release velocity
+    // Cap to avoid wild spin rates
+    const maxVelocity = 3500;
+    const minVelocity = -3500;
+    currentSpeed.current = Math.max(minVelocity, Math.min(maxVelocity, dragVelocity.current));
+  };
+
+  const items = [
+    { text: "UX/UI DESIGN", outline: false, italic: false },
+    { text: "PRODUCT DESIGN", outline: true, italic: true },
+    { text: "BRANDING", outline: false, italic: false },
+    { text: "MOTION DESIGN", outline: true, italic: false },
+    { text: "AI WORKFLOWS", outline: false, italic: true },
+    { text: "CREATIVE DIRECTION", outline: true, italic: false },
+  ];
+
+  // We render 3 identical lists next to each other to make looping seamless
+  const renderItemSet = (ref?: React.RefObject<HTMLDivElement | null>) => (
+    <div ref={ref} className="flex items-center flex-shrink-0">
+      {items.map((item, idx) => (
+        <div key={idx} className="flex items-center flex-shrink-0">
+          <span 
+            className={`text-5xl md:text-8xl font-black tracking-tight select-none ${
+              item.outline 
+                ? "text-transparent" 
+                : "text-white"
+            } ${item.italic ? "italic font-light" : ""}`}
+            style={item.outline ? { WebkitTextStroke: "1.5px rgba(255, 255, 255, 0.4)" } : undefined}
+          >
+            {item.text}
+          </span>
+          <span className="mx-8 md:mx-16 text-white/20 select-none text-3xl md:text-5xl flex-shrink-0">✦</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div 
+      ref={containerRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      className="w-full overflow-hidden border-y border-white/10 py-12 md:py-16 bg-[#050505] cursor-grab select-none touch-none active:cursor-grabbing flex items-center"
+      style={{ overflowAnchor: 'none' }}
+    >
+      <div 
+        ref={trackRef} 
+        className="flex whitespace-nowrap will-change-transform"
+      >
+        {renderItemSet(firstSetRef)}
+        {renderItemSet()}
+        {renderItemSet()}
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const [activeSection, setActiveSection] = useState("home");
@@ -282,7 +501,7 @@ export default function App() {
 
     const observerCallback = (entries: IntersectionObserverEntry[]) => {
       if (isManualScroll.current) return;
-      
+
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
           setActiveSection(entry.target.id);
@@ -308,7 +527,7 @@ export default function App() {
     isManualScroll.current = true;
     setActiveSection(sectionId);
     setIsMobileMenuOpen(false);
-    
+
     // Reset manual scroll flag after animation finishes
     setTimeout(() => {
       isManualScroll.current = false;
@@ -331,7 +550,7 @@ export default function App() {
       />
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-between px-6 py-6 md:px-12 bg-black/50 backdrop-blur-md border-b border-white/5">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           className="text-xl font-bold tracking-tighter relative z-[110]"
@@ -340,7 +559,7 @@ export default function App() {
         </motion.div>
 
         {/* Desktop Navigation */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           className="hidden md:flex items-center space-x-8 text-sm font-medium"
@@ -349,13 +568,12 @@ export default function App() {
             const sectionId = item.href.replace("#", "");
             const isActive = activeSection === sectionId;
             return (
-              <a 
+              <a
                 key={item.name}
-                href={item.href} 
+                href={item.href}
                 onClick={() => handleNavClick(sectionId)}
-                className={`relative py-1 transition-colors duration-300 ${
-                  isActive ? "text-white" : "text-white/50 hover:text-white/80"
-                }`}
+                className={`relative py-1 transition-colors duration-300 ${isActive ? "text-white" : "text-white/50 hover:text-white/80"
+                  }`}
               >
                 {item.name}
                 {isActive && (
@@ -384,7 +602,7 @@ export default function App() {
           </motion.button>
 
           {/* Hamburger Button */}
-          <button 
+          <button
             className="md:hidden p-2 text-white hover:bg-white/10 rounded-full transition-colors"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             aria-label="Toggle menu"
@@ -415,9 +633,8 @@ export default function App() {
                   key={item.name}
                   href={item.href}
                   onClick={() => handleNavClick(sectionId)}
-                  className={`text-5xl font-bold tracking-tighter transition-colors ${
-                    isActive ? "text-white" : "text-white/30 hover:text-white/60"
-                  }`}
+                  className={`text-5xl font-bold tracking-tighter transition-colors ${isActive ? "text-white" : "text-white/30 hover:text-white/60"
+                    }`}
                 >
                   {item.name}
                 </motion.a>
@@ -440,17 +657,17 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <section 
-        id="home" 
+      <section
+        id="home"
         className="relative flex flex-col justify-start md:justify-end h-[60vh] md:min-h-screen px-6 pt-32 pb-0 md:pt-0 md:px-12 md:pb-32 bg-none md:bg-cover md:bg-right md:bg-no-repeat scroll-mt-32"
-        style={{ 
-          backgroundImage: `url(${heroImage})` 
+        style={{
+          backgroundImage: `url(${heroImage})`
         }}
       >
         <div className="md:hidden absolute top-0 left-0 w-full h-full overflow-hidden bg-black">
-          <img 
-            src={heroImage} 
-            alt="Hero" 
+          <img
+            src={heroImage}
+            alt="Hero"
             className="w-full h-full object-cover object-right scale-[0.8] translate-x-[35%] origin-bottom bg-black lg:scale-100"
             style={{
               maskImage: 'linear-gradient(to right, transparent 0%, black 40%)',
@@ -463,7 +680,7 @@ export default function App() {
 
         {/* Dark overlay for readability (Desktop) */}
         <div className="hidden md:block absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/20"></div>
-        
+
         <div className="max-w-7xl mx-auto w-full grid grid-cols-1 md:grid-cols-12 gap-8 items-end relative z-10 mt-0 md:mt-0">
           <div className="md:col-span-8">
             <motion.div
@@ -483,15 +700,17 @@ export default function App() {
         </div>
       </section>
 
+      <InteractiveMarquee />
+
       {/* About Section */}
-      <section id="about" className="pt-32 pb-0 md:py-32 px-6 md:px-12 border-t border-white/10 scroll-mt-32">
+      <section id="about" className="pt-32 pb-0 md:py-32 px-6 md:px-12 scroll-mt-32">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-12">
             <div className="md:col-span-4">
               <span className="text-xs font-mono uppercase tracking-widest text-white/40">01 / About</span>
             </div>
             <div className="md:col-span-8">
-              <motion.h2 
+              <motion.h2
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -499,7 +718,7 @@ export default function App() {
               >
                 Bridging the gap between <span className="text-white/40 italic">imagination</span> and <span className="text-white/40 italic">implementation</span>.
               </motion.h2>
-              <motion.p 
+              <motion.p
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -539,8 +758,8 @@ export default function App() {
               >
                 {/* Project Image Preview */}
                 <div className="relative aspect-[4/3] overflow-hidden bg-black/20">
-                  <LazyImage 
-                    src={project.image} 
+                  <LazyImage
+                    src={project.image}
                     alt={project.title}
                     className="w-full h-full"
                     imageClassName="transition-transform duration-700 group-hover:scale-105"
@@ -557,11 +776,11 @@ export default function App() {
                   <h3 className="text-2xl font-bold mb-3 group-hover:translate-x-1 transition-transform duration-300">
                     {project.title}
                   </h3>
-                  
+
                   <p className="text-white/60 text-sm leading-relaxed mb-8 flex-grow">
                     {project.description}
                   </p>
-  
+
                   <div className="flex flex-wrap gap-2">
                     {project.tags.map((tag, i) => (
                       <span key={i} className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 bg-white/5 rounded-md text-white/40 border border-white/5">
@@ -606,13 +825,12 @@ export default function App() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 50 }}
                 transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                className={`bg-[#0a0a0a] border border-white/10 rounded-3xl w-full overflow-hidden relative shadow-2xl ${
-                  selectedProject.type === 'brandbook' ? 'max-w-4xl' : 'max-w-5xl'
-                }`}
+                className={`bg-[#0a0a0a] border border-white/10 rounded-3xl w-full overflow-hidden relative shadow-2xl ${selectedProject.type === 'brandbook' ? 'max-w-4xl' : 'max-w-5xl'
+                  }`}
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Close Button Inside Modal */}
-                <button 
+                <button
                   onClick={() => setSelectedProject(null)}
                   className="absolute top-6 right-6 z-[110] p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md border border-white/10"
                 >
@@ -636,21 +854,21 @@ export default function App() {
                         ))}
                       </div>
                     </div>
-                    
+
                     {/* The Image(s) Container */}
                     <div className="w-full bg-black flex flex-col items-center justify-center relative">
                       {selectedProject.contentBlocks && selectedProject.contentBlocks.length > 0 ? (
                         selectedProject.contentBlocks.map((block, index) => (
                           <div key={index} className="w-full">
                             {block.type === 'image' ? (
-                              <LazyImage 
-                                src={block.url} 
+                              <LazyImage
+                                src={block.url}
                                 alt={`${selectedProject.title} - Page ${index + 1}`}
                                 className="w-full h-auto"
                               />
                             ) : (
                               <div className="w-full aspect-video bg-white/5 flex items-center justify-center p-4">
-                                <iframe 
+                                <iframe
                                   src={block.url}
                                   className="w-full h-full rounded-lg border border-white/10"
                                   allowFullScreen
@@ -660,8 +878,8 @@ export default function App() {
                           </div>
                         ))
                       ) : (
-                        <LazyImage 
-                          src={selectedProject.fullImage || selectedProject.image} 
+                        <LazyImage
+                          src={selectedProject.fullImage || selectedProject.image}
                           alt={selectedProject.title}
                           className="w-full h-auto"
                         />
@@ -670,8 +888,8 @@ export default function App() {
 
                     <div className="p-16 text-center bg-white/5">
                       <h3 className="text-2xl font-bold mb-8">Ready to start your project?</h3>
-                      <a 
-                        href="#contact" 
+                      <a
+                        href="#contact"
                         onClick={() => setSelectedProject(null)}
                         className="inline-flex items-center space-x-3 bg-white text-black px-8 py-4 rounded-full font-bold hover:scale-105 transition-transform"
                       >
@@ -684,8 +902,8 @@ export default function App() {
                   /* Standard Product Layout: Split View */
                   <div className="grid grid-cols-1 md:grid-cols-2">
                     <div className="h-full overflow-hidden bg-white/5 flex items-center justify-center">
-                      <LazyImage 
-                        src={selectedProject.image} 
+                      <LazyImage
+                        src={selectedProject.image}
                         alt={selectedProject.title}
                         className="w-full h-full"
                       />
@@ -696,7 +914,7 @@ export default function App() {
                       <p className="text-white/60 text-lg leading-relaxed mb-8">
                         {selectedProject.longDescription}
                       </p>
-    
+
                       <div className="flex flex-wrap gap-3 mb-12">
                         {selectedProject.tags.map((tag, i) => (
                           <span key={i} className="text-xs font-mono uppercase tracking-wider px-3 py-1.5 bg-white/5 rounded-full text-white/60 border border-white/10">
@@ -704,20 +922,20 @@ export default function App() {
                           </span>
                         ))}
                       </div>
-    
+
                       <div className="flex space-x-4">
-                        <a 
-                          href={selectedProject.link} 
-                          target="_blank" 
+                        <a
+                          href={selectedProject.link}
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="flex-1 flex items-center justify-center space-x-2 bg-white text-black py-4 rounded-xl font-bold hover:bg-white/90 transition-all"
                         >
                           <span>Live Preview</span>
                           <ExternalLink size={18} />
                         </a>
-                        <a 
-                          href={selectedProject.github} 
-                          target="_blank" 
+                        <a
+                          href={selectedProject.github}
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="px-6 flex items-center justify-center bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all"
                         >
@@ -733,8 +951,8 @@ export default function App() {
                           <div key={index} className="space-y-6">
                             {block.type === 'image' ? (
                               <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
-                                <LazyImage 
-                                  src={block.url} 
+                                <LazyImage
+                                  src={block.url}
                                   alt={`${selectedProject.title} - Block ${index + 1}`}
                                   className="w-full h-auto"
                                 />
@@ -747,11 +965,11 @@ export default function App() {
                                   </span>
                                 )}
                                 <div className="aspect-video w-full rounded-2xl overflow-hidden border border-white/10 bg-white/5 shadow-2xl">
-                                  <iframe 
-                                    style={{ border: "none" }} 
-                                    width="100%" 
-                                    height="100%" 
-                                    src={block.url} 
+                                  <iframe
+                                    style={{ border: "none" }}
+                                    width="100%"
+                                    height="100%"
+                                    src={block.url}
                                     allowFullScreen
                                   ></iframe>
                                 </div>
@@ -777,7 +995,7 @@ export default function App() {
           viewport={{ once: true }}
         >
           <h2 className="text-4xl md:text-6xl font-bold mb-8">Let's build something <span className="italic text-white/40">extraordinary</span>.</h2>
-          
+
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -789,46 +1007,46 @@ export default function App() {
           </motion.button>
 
           <div className="flex items-center justify-center space-x-6">
-            <a 
-              href="https://www.linkedin.com/in/liav-bazak-13aa6419b/" 
-              target="_blank" 
+            <a
+              href="https://www.linkedin.com/in/liav-bazak-13aa6419b/"
+              target="_blank"
               rel="noopener noreferrer"
               className="p-3 bg-white/5 border border-white/10 rounded-full hover:bg-white hover:text-black transition-all duration-300"
               aria-label="LinkedIn"
             >
               <Linkedin size={24} />
             </a>
-            <a 
-              href="https://www.instagram.com/liav.bazak/" 
-              target="_blank" 
+            <a
+              href="https://www.instagram.com/liav.bazak/"
+              target="_blank"
               rel="noopener noreferrer"
               className="p-3 bg-white/5 border border-white/10 rounded-full hover:bg-white hover:text-black transition-all duration-300"
               aria-label="Instagram"
             >
               <Instagram size={24} />
             </a>
-            <a 
-              href="https://www.behance.net/liavbazak" 
-              target="_blank" 
+            <a
+              href="https://www.behance.net/liavbazak"
+              target="_blank"
               rel="noopener noreferrer"
               className="p-3 bg-white/5 border border-white/10 rounded-full hover:bg-white hover:text-black transition-all duration-300"
               aria-label="Behance"
             >
-              <svg 
-                width="24" 
-                height="24" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                <path d="M9 12h2a2.5 2.5 0 0 0 0-5H9v5z"/>
-                <path d="M9 17h2.5a2.5 2.5 0 0 0 0-5H9v5z"/>
-                <path d="M16 11h5"/>
-                <path d="M21 14c0 2-2 3-4 3s-4-1-4-3 2-3 4-3 4 1 4 3z"/>
-                <rect x="2" y="4" width="20" height="16" rx="2"/>
+                <path d="M9 12h2a2.5 2.5 0 0 0 0-5H9v5z" />
+                <path d="M9 17h2.5a2.5 2.5 0 0 0 0-5H9v5z" />
+                <path d="M16 11h5" />
+                <path d="M21 14c0 2-2 3-4 3s-4-1-4-3 2-3 4-3 4 1 4 3z" />
+                <rect x="2" y="4" width="20" height="16" rx="2" />
               </svg>
             </a>
           </div>
@@ -851,14 +1069,14 @@ export default function App() {
               onClick={() => setIsContactModalOpen(false)}
               className="absolute inset-0 bg-black/90 backdrop-blur-xl"
             />
-            
+
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="relative w-full max-w-2xl bg-white/5 border border-white/10 rounded-3xl overflow-hidden"
             >
-              <button 
+              <button
                 onClick={() => setIsContactModalOpen(false)}
                 className="absolute top-6 right-6 p-2 text-white/50 hover:text-white transition-colors z-10"
               >
@@ -869,7 +1087,7 @@ export default function App() {
                 <h2 className="text-3xl md:text-4xl font-bold mb-2 tracking-tighter">Get in touch<span className="text-white/30">.</span></h2>
                 <p className="text-white/50 mb-8">Fill out the form below and I'll get back to you as soon as possible.</p>
 
-                <form 
+                <form
                   noValidate
                   onSubmit={async (e) => {
                     e.preventDefault();
@@ -878,7 +1096,7 @@ export default function App() {
                     setErrorMessage("");
                     const formData = new FormData(e.currentTarget);
                     const data = Object.fromEntries(formData);
-                    
+
                     // Basic validation
                     if (!data.firstName || !data.lastName) {
                       setErrorMessage("Please fill in your full name.");
@@ -895,29 +1113,29 @@ export default function App() {
                       setIsSubmitting(false);
                       return;
                     }
-                    
+
                     if (!data.message) {
                       setErrorMessage("Please enter a message.");
                       setSubmitStatus('error');
                       setIsSubmitting(false);
                       return;
                     }
-                    
+
                     try {
                       console.log("Submitting to /api/contact (using Resend)...");
                       const response = await fetch("/api/contact", {
                         method: "POST",
-                        headers: { 
+                        headers: {
                           'Content-Type': 'application/json',
                           'Accept': 'application/json'
                         },
                         body: JSON.stringify(data)
                       });
-                      
+
                       console.log("Response status:", response.status);
                       const result = await response.json();
                       console.log("Result:", result);
-                      
+
                       if (response.ok && result.success) {
                         setSubmitStatus('success');
                         setTimeout(() => {
@@ -941,7 +1159,7 @@ export default function App() {
                   className="space-y-6"
                 >
                   {submitStatus === 'success' ? (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-4 rounded-xl text-center"
@@ -949,7 +1167,7 @@ export default function App() {
                       Message sent successfully! I'll be in touch soon.
                     </motion.div>
                   ) : submitStatus === 'error' ? (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-center"
@@ -961,9 +1179,9 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <label htmlFor="firstName" className="text-sm font-medium text-white/50 ml-1">First Name</label>
-                      <input 
+                      <input
                         required
-                        type="text" 
+                        type="text"
                         id="firstName"
                         name="firstName"
                         placeholder="Liav"
@@ -972,9 +1190,9 @@ export default function App() {
                     </div>
                     <div className="space-y-2">
                       <label htmlFor="lastName" className="text-sm font-medium text-white/50 ml-1">Last Name</label>
-                      <input 
+                      <input
                         required
-                        type="text" 
+                        type="text"
                         id="lastName"
                         name="lastName"
                         placeholder="Bazak"
@@ -985,9 +1203,9 @@ export default function App() {
 
                   <div className="space-y-2">
                     <label htmlFor="email" className="text-sm font-medium text-white/50 ml-1">Email Address</label>
-                    <input 
+                    <input
                       required
-                      type="email" 
+                      type="email"
                       id="email"
                       name="email"
                       placeholder="liav@example.com"
@@ -997,7 +1215,7 @@ export default function App() {
 
                   <div className="space-y-2">
                     <label htmlFor="message" className="text-sm font-medium text-white/50 ml-1">Message</label>
-                    <textarea 
+                    <textarea
                       required
                       id="message"
                       name="message"
@@ -1007,7 +1225,7 @@ export default function App() {
                     />
                   </div>
 
-                  <button 
+                  <button
                     type="submit"
                     disabled={isSubmitting || submitStatus === 'success'}
                     className="w-full bg-white text-black font-bold py-4 rounded-xl hover:bg-white/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2 group"
